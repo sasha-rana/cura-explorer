@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { areasDoc } from '../algorithms/areas'
 import { infillDoc } from '../algorithms/infill'
 import { metricsDoc } from '../algorithms/metrics'
 import { pathOrderDoc } from '../algorithms/pathOrder'
+import type { PseudocodeKey, PseudocodeRunResult } from '../algorithms/pseudocode'
 import { slicingDoc } from '../algorithms/slicing'
 import { travelDoc } from '../algorithms/travel'
 import type { StageDoc } from '../algorithms/types'
@@ -10,7 +12,10 @@ import { constantWallsDoc } from '../algorithms/wallsConstant'
 import type { PipelineResult } from '../state/pipeline'
 import { Markdown } from './markdown'
 import { MetricsTable } from './MetricsTable'
+import { PseudocodePanel } from './PseudocodePanel'
 import type { StageId } from './vis'
+
+export type RightTab = 'pseudocode' | 'guide'
 
 interface ExplainerPanelProps {
   stage: StageId
@@ -18,6 +23,17 @@ interface ExplainerPanelProps {
   result: PipelineResult | null
   compareHint: boolean
   onCompare: () => void
+  // Pseudocode runner state
+  stageKey: PseudocodeKey
+  code: string
+  isCustomCode: boolean
+  driveLayer: boolean
+  pseudoRun: PseudocodeRunResult
+  selectedStep: number | null
+  onChangeCode: (code: string) => void
+  onResetCode: () => void
+  onToggleDriveLayer: (drive: boolean) => void
+  onSelectStep: (stepIndex: number | null) => void
 }
 
 function DocView({ doc }: { doc: StageDoc }) {
@@ -44,6 +60,8 @@ function DocView({ doc }: { doc: StageDoc }) {
 }
 
 export function ExplainerPanel(props: ExplainerPanelProps) {
+  const [tab, setTab] = useState<RightTab>('pseudocode')
+
   const docs: Record<StageId, StageDoc> = {
     slicing: slicingDoc,
     areas: areasDoc,
@@ -52,17 +70,55 @@ export function ExplainerPanel(props: ExplainerPanelProps) {
     order: pathOrderDoc,
     travel: travelDoc,
   }
+
   return (
     <div className="explainer">
-      <DocView doc={docs[props.stage]} />
-      {props.stage === 'travel' && <DocView doc={metricsDoc} />}
-      <h3>Layer metrics</h3>
-      {props.result ? <MetricsTable metrics={props.result.metrics} /> : <p>No layer loaded.</p>}
-      {props.compareHint && (
-        <button type="button" className="compare-hint" onClick={props.onCompare}>
-          Compare constant vs Arachne on this wedge →
+      <div className="explainer-tabs">
+        <button
+          type="button"
+          className={`explainer-tab${tab === 'pseudocode' ? ' active' : ''}`}
+          onClick={() => setTab('pseudocode')}
+        >
+          Pseudocode & Runner
         </button>
+        <button
+          type="button"
+          className={`explainer-tab${tab === 'guide' ? ' active' : ''}`}
+          onClick={() => setTab('guide')}
+        >
+          Algorithm Guide
+        </button>
+      </div>
+
+      {tab === 'pseudocode' ? (
+        <PseudocodePanel
+          stageKey={props.stageKey}
+          code={props.code}
+          isCustom={props.isCustomCode}
+          driveLayer={props.driveLayer}
+          runResult={props.pseudoRun}
+          selectedStep={props.selectedStep}
+          onChangeCode={props.onChangeCode}
+          onResetCode={props.onResetCode}
+          onToggleDriveLayer={props.onToggleDriveLayer}
+          onSelectStep={props.onSelectStep}
+        />
+      ) : (
+        <>
+          <DocView doc={docs[props.stage]} />
+          {props.stage === 'travel' && <DocView doc={metricsDoc} />}
+        </>
       )}
+
+      <div className="explainer-footer">
+        <h3>Layer metrics {props.driveLayer && <span className="metrics-badge">from pseudocode</span>}</h3>
+        {props.result ? <MetricsTable metrics={props.result.metrics} /> : <p>No layer loaded.</p>}
+        {props.compareHint && (
+          <button type="button" className="compare-hint" onClick={props.onCompare}>
+            Compare constant vs Arachne on this wedge →
+          </button>
+        )}
+      </div>
     </div>
   )
 }

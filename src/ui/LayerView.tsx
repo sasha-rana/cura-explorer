@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Point, Polygon, Polyline } from '../geometry/types'
+import type { PseudoStep } from '../algorithms/pseudocode'
 import type { ExtrusionLine, FeatureKind, OrderedMove, SlicedLayer } from '../algorithms/types'
-import type { PipelineResult } from '../state/pipeline'
+import { defaultPipelineParams, type PipelineParams, type PipelineResult } from '../state/pipeline'
+import { StepDeepDive } from './StepDeepDive'
 import type { ViewTransform, VisState } from './vis'
 import { featureColors } from './vis'
 
@@ -30,6 +32,15 @@ interface LayerViewProps {
   animDist?: number | null
   showNozzle?: boolean
   draw?: DrawHandlers
+  /** Highlighted intermediate step from pseudocode execution. */
+  activeStep?: PseudoStep | null
+  allSteps?: PseudoStep[]
+  totalSteps?: number
+  onSelectStep?: (stepIndex: number | null) => void
+  params?: PipelineParams
+  shapeName?: string
+  detailedOpen?: boolean
+  onToggleDetailed?: () => void
 }
 
 interface MoveSeg {
@@ -109,6 +120,9 @@ export function LayerView(props: LayerViewProps) {
   const [size, setSize] = useState({ w: 0, h: 0 })
   const [inner, setInner] = useState<ViewTransform | null>(null)
   const [cursor, setCursor] = useState<Point | null>(null)
+  const [localDetailed, setLocalDetailed] = useState(false)
+  const detailedOpen = props.detailedOpen ?? localDetailed
+  const toggleDetailed = props.onToggleDetailed ?? (() => setLocalDetailed((v) => !v))
   const view = props.view !== undefined ? props.view : inner
   const setViewRef = useRef<(v: ViewTransform) => void>(() => {})
   setViewRef.current = props.onView ?? setInner
@@ -276,6 +290,9 @@ export function LayerView(props: LayerViewProps) {
     ctx.stroke()
 
     // Region fills.
+    const stepInspect = props.activeStep ?? null
+    const baseAlpha = stepInspect ? 0.18 : 1
+    ctx.globalAlpha = baseAlpha
     if (result) {
       if (vis.wallsRegion) fillPolys(result.areas.wallsRegion, 'rgba(150,170,200,0.13)')
       if (vis.infillRegion) fillPolys(result.areas.infillRegion, 'rgba(245,166,35,0.07)')
@@ -305,11 +322,13 @@ export function LayerView(props: LayerViewProps) {
     // Raw segments / stitched outline.
     if (vis.rawSegments && layer) strokeLines(layer.rawSegments, '#6a7078', 1)
     if (vis.outline && result) {
+      ctx.globalAlpha = stepInspect ? 0.45 : 1
       ctx.strokeStyle = '#9aa4b2'
       ctx.lineWidth = px(1)
       ctx.beginPath()
       result.outline.forEach(tracePolygon)
       ctx.stroke()
+      ctx.globalAlpha = baseAlpha
     }
 
     // Raw infill pattern lines (pre-clip teaching view).
@@ -317,9 +336,15 @@ export function LayerView(props: LayerViewProps) {
 
     // Extrusion + travel moves in print order.
     if (result) {
+      const featureVisible = (f: OrderedMove['feature']): boolean => {
+        if (f === 'outer-wall' || f === 'inner-wall') return vis.wallPaths
+        if (f === 'infill') return vis.infillLines
+        if (f === 'skin') return vis.skinLines
+        return true
+      }
       const drawExtrusion = (seg: MoveSeg, pts: Polyline, alpha: number) => {
-        if (pts.length < 2) return
-        ctx.globalAlpha = alpha
+        if (pts.length < 2 || !featureVisible(seg.move.feature)) return
+        ctx.globalAlpha = alpha * baseAlpha
         ctx.strokeStyle = featureColors[seg.move.feature as FeatureKind] ?? '#fff'
         ctx.lineCap = 'round'
         ctx.lineJoin = 'round'
@@ -330,11 +355,11 @@ export function LayerView(props: LayerViewProps) {
           ctx.lineTo(pts[i].x, pts[i].y)
           ctx.stroke()
         }
-        ctx.globalAlpha = 1
+        ctx.globalAlpha = baseAlpha
       }
       const drawTravel = (pts: Polyline, alpha: number) => {
         if (!vis.travel || pts.length < 2) return
-        ctx.globalAlpha = alpha
+        ctx.globalAlpha = alpha * baseAlpha
         ctx.strokeStyle = TRAVEL_COLOR
         ctx.lineWidth = px(1)
         ctx.setLineDash([px(4), px(3)])
@@ -343,7 +368,7 @@ export function LayerView(props: LayerViewProps) {
         for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y)
         ctx.stroke()
         ctx.setLineDash([])
-        ctx.globalAlpha = 1
+        ctx.globalAlpha = baseAlpha
       }
       const partialIdx = pathData.segs.findIndex((s) => cutoff > s.start && cutoff < s.start + s.len)
       pathData.segs.forEach((seg, i) => {
@@ -366,6 +391,115 @@ export function LayerView(props: LayerViewProps) {
           drawTravel(seg.pts, alpha)
         }
       })
+    }
+    ctx.globalAlpha = 1
+
+    // Highlighted pseudocode step geometry overlay.
+    if (stepInspect) {
+      const g = stepInspect.geometry
+      // 1. Highlighted polygons (outer in bright cyan, holes in dashed coral)
+      if (g.polygons.length > 0) {
+        fillPolys(g.polygons, 'rgba(0, 229, 255, 0.22)')
+        ctx.strokeStyle = '#00e5ff'
+        ctx.lineWidth = px(2)
+        ctx.beginPath()
+        for (const poly of g.polygons) {
+          if (poly.outer.length === 0) continue
+          ctx.moveTo(poly.outer[0].x, poly.outer[0].y)
+          for (let i = 1; i < poly.outer.length; i++) ctx.lineTo(poly.outer[i].x, poly.outer[i].y)
+          ctx.closePath()
+        }
+        ctx.stroke()
+
+        const holes = g.polygons.flatMap((p) => p.holes)
+        if (holes.length > 0) {
+          ctx.strokeStyle = '#ff6b9d'
+          ctx.lineWidth = px(1.8)
+          ctx.setLineDash([px(4), px(3)])
+          ctx.beginPath()
+          for (const h of holes) {
+            if (h.length === 0) continue
+            ctx.moveTo(h[0].x, h[0].y)
+            for (let i = 1; i < h.length; i++) ctx.lineTo(h[i].x, h[i].y)
+            ctx.closePath()
+          }
+          ctx.stroke()
+          ctx.setLineDash([])
+        }
+      }
+
+      // 2. Highlighted skeleton (edges, nodes, and clearance radius circles)
+      if (g.skeleton) {
+        const sk = g.skeleton
+        ctx.strokeStyle = 'rgba(0, 229, 255, 0.22)'
+        ctx.lineWidth = px(1)
+        const stride = Math.max(1, Math.floor(sk.nodes.length / 24))
+        for (let i = 0; i < sk.nodes.length; i += stride) {
+          const n = sk.nodes[i]
+          if (n.r > 0) {
+            ctx.beginPath()
+            ctx.arc(n.p.x, n.p.y, n.r, 0, Math.PI * 2)
+            ctx.stroke()
+          }
+        }
+        ctx.strokeStyle = '#00e5ff'
+        ctx.lineWidth = px(2)
+        ctx.beginPath()
+        for (const [a, b] of sk.edges) {
+          ctx.moveTo(sk.nodes[a].p.x, sk.nodes[a].p.y)
+          ctx.lineTo(sk.nodes[b].p.x, sk.nodes[b].p.y)
+        }
+        ctx.stroke()
+        ctx.fillStyle = '#00e5ff'
+        for (const n of sk.nodes) {
+          ctx.beginPath()
+          ctx.arc(n.p.x, n.p.y, px(2.2), 0, Math.PI * 2)
+          ctx.fill()
+        }
+      }
+
+      // 3. Highlighted polylines
+      if (g.polylines.length > 0) {
+        strokeLines(g.polylines, '#ffb703', 1.8)
+      }
+
+      // 4. Highlighted extrusion lines (bead width + bright spine)
+      const drawBeadLine = (line: ExtrusionLine, color: string) => {
+        if (line.length < 2) return
+        ctx.lineCap = 'round'
+        ctx.lineJoin = 'round'
+        ctx.globalAlpha = 0.65
+        ctx.strokeStyle = color
+        for (let i = 1; i < line.length; i++) {
+          ctx.lineWidth = Math.max(line[i].w, px(1.5))
+          ctx.beginPath()
+          ctx.moveTo(line[i - 1].p.x, line[i - 1].p.y)
+          ctx.lineTo(line[i].p.x, line[i].p.y)
+          ctx.stroke()
+        }
+        ctx.globalAlpha = 1
+        ctx.strokeStyle = '#ffffff'
+        ctx.lineWidth = px(1.3)
+        ctx.beginPath()
+        ctx.moveTo(line[0].p.x, line[0].p.y)
+        for (let i = 1; i < line.length; i++) ctx.lineTo(line[i].p.x, line[i].p.y)
+        ctx.stroke()
+      }
+
+      for (const line of g.extrusionLines) {
+        drawBeadLine(line, '#00e5ff')
+      }
+
+      // 5. Highlighted ordered moves
+      for (const mv of g.moves) {
+        if (mv.kind === 'extrusion') {
+          const col = featureColors[mv.feature as FeatureKind] ?? '#00e5ff'
+          drawBeadLine(mv.line as ExtrusionLine, col)
+        } else {
+          const pts = mv.line as Polyline
+          strokeLines([pts], '#3a86ff', 2, [5, 3])
+        }
+      }
     }
 
     // Draft polygon (draw mode).
@@ -592,6 +726,75 @@ export function LayerView(props: LayerViewProps) {
         onDoubleClick={onDoubleClick}
         onContextMenu={onContextMenu}
       />
+      {props.activeStep && (
+        <div className={`step-hud-wrap${detailedOpen ? ' expanded' : ''}`}>
+          <div className="step-hud">
+            <div className="step-hud-top">
+              <span className="step-hud-badge">
+                S{props.activeStep.index + 1}
+                {props.totalSteps ? `/${props.totalSteps}` : ''} · Lines{' '}
+                {props.activeStep.details.startLine}–{props.activeStep.details.endLine}
+              </span>
+              <span className="step-hud-title">{props.activeStep.label}</span>
+              <span className="step-hud-note">{props.activeStep.details.dataMetrics}</span>
+              {props.onSelectStep && (
+                <span className="step-hud-controls">
+                  <button
+                    type="button"
+                    className="btn btn-xs"
+                    disabled={props.activeStep.index <= 0}
+                    onClick={() => props.onSelectStep!(props.activeStep!.index - 1)}
+                  >
+                    ◀
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-xs"
+                    disabled={
+                      props.totalSteps !== undefined &&
+                      props.activeStep.index >= props.totalSteps - 1
+                    }
+                    onClick={() => props.onSelectStep!(props.activeStep!.index + 1)}
+                  >
+                    ▶
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-xs"
+                    onClick={() => props.onSelectStep!(null)}
+                  >
+                    ✕ Full layer
+                  </button>
+                </span>
+              )}
+            </div>
+            <div className="step-hud-sub">
+              <strong>{props.activeStep.details.algorithm}:</strong>{' '}
+              {props.activeStep.details.whatItDoes}
+            </div>
+            {detailedOpen && (
+              <div className="step-hud-deepdive">
+                <StepDeepDive
+                  step={props.activeStep}
+                  allSteps={props.allSteps ?? []}
+                  params={props.params ?? defaultPipelineParams}
+                  result={result}
+                  shapeName={props.shapeName ?? 'Current shape'}
+                />
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            className={`step-detail-btn${detailedOpen ? ' active' : ''}`}
+            onClick={toggleDetailed}
+          >
+            {detailedOpen
+              ? '▴ Hide Detailed Explanation'
+              : '▾ Detailed Explanation (First-Principles Step 1–7 Walkthrough & Diagrams)'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

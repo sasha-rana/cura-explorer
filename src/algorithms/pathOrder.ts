@@ -69,7 +69,7 @@ interface Candidate {
   closed: boolean
 }
 
-function isClosed(line: ExtrusionLine): boolean {
+export function isClosed(line: ExtrusionLine): boolean {
   return line.length > 2 && dist(line[0].p, line[line.length - 1].p) <= CLOSED_EPSILON
 }
 
@@ -79,7 +79,7 @@ function isClosed(line: ExtrusionLine): boolean {
  * continues straight on (cos = 1) costs half; a full reversal (cos = -1) costs 1.5x.
  * This is our equivalent of Cura's |sin|-based smoothing preference.
  */
-function weightedDistance(d: number, lastDir: Point | undefined, from: Point, to: Point): number {
+export function weightedDistance(d: number, lastDir: Point | undefined, from: Point, to: Point): number {
   if (!lastDir) return d
   const tx = to.x - from.x
   const ty = to.y - from.y
@@ -90,7 +90,7 @@ function weightedDistance(d: number, lastDir: Point | undefined, from: Point, to
 }
 
 /** Rotate a closed ring so it starts (and ends) at vertex `vertex`; never reversed. */
-function rotateRing(line: ExtrusionLine, vertex: number): ExtrusionLine {
+export function rotateRing(line: ExtrusionLine, vertex: number): ExtrusionLine {
   const n = line.length - 1 // last point repeats the first
   const out: ExtrusionLine = []
   for (let k = 0; k < n; k++) out.push(line[(vertex + k) % n])
@@ -98,7 +98,7 @@ function rotateRing(line: ExtrusionLine, vertex: number): ExtrusionLine {
   return out
 }
 
-function nearestVertex(pos: Point, line: ExtrusionLine): number {
+export function nearestVertex(pos: Point, line: ExtrusionLine): number {
   let best = 0
   let bestD2 = Infinity
   const n = line.length - 1

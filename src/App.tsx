@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { initClipper } from './geometry/clipper'
 import { parseStl } from './geometry/stl'
 import type { Point, Polygon, Triangle } from './geometry/types'
+import {
+  PSEUDOCODE_STAGES,
+  stagePseudocodeKey,
+  type PseudocodeKey,
+  type PseudocodeRunResult,
+} from './algorithms/pseudocode'
 import { sliceMesh } from './algorithms/slicing'
 import type { SlicedLayer } from './algorithms/types'
 import {
@@ -11,7 +17,11 @@ import {
   type PresetId,
   type StlPresetId,
 } from './presets/shapes'
-import { defaultPipelineParams, runPipeline, type PipelineParams } from './state/pipeline'
+import {
+  defaultPipelineParams,
+  runPipelineWithPseudocode,
+  type PipelineParams,
+} from './state/pipeline'
 import { AnimateControls } from './ui/AnimateControls'
 import { CompareView } from './ui/CompareView'
 import { ExplainerPanel } from './ui/ExplainerPanel'
@@ -59,6 +69,9 @@ function App() {
   const [step, setStep] = useState<number | null>(null)
   const [animDist, setAnimDist] = useState<number | null>(null)
   const [fitKey, setFitKey] = useState(0)
+  const [customCodes, setCustomCodes] = useState<Partial<Record<PseudocodeKey, string>>>({})
+  const [driveLayer, setDriveLayer] = useState(true)
+  const [selectedStep, setSelectedStep] = useState<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -82,7 +95,15 @@ function App() {
     setFitKey((k) => k + 1)
     setLayerIndex(0)
     setStep(null)
+    setSelectedStep(null)
   }, [source])
+
+  const stageKey = stagePseudocodeKey(stage, params.wallStrategy)
+
+  // Clear isolated step checkpoint when switching stages or wall strategies.
+  useEffect(() => {
+    setSelectedStep(null)
+  }, [stageKey])
 
   const layers = useMemo<SlicedLayer[]>(() => {
     if (!ready) return []
@@ -101,12 +122,37 @@ function App() {
   }, [ready, source, customPolys, dParams.layerHeight])
 
   const li = Math.min(layerIndex, Math.max(0, layers.length - 1))
-  const layer = layers[li] ?? null
+  const dLi = useDeferredValue(li)
+  const layer = layers[dLi] ?? null
 
-  const result = useMemo(
-    () => (ready && layer ? runPipeline(layers, li, dParams) : null),
-    [ready, layers, li, layer, dParams],
+  const dStageKey = stagePseudocodeKey(stage, dParams.wallStrategy)
+
+  const pipelineOut = useMemo(
+    () =>
+      ready && layer
+        ? runPipelineWithPseudocode(layers, dLi, dParams, {
+            activeKey: dStageKey,
+            codes: customCodes,
+            driveLayer,
+          })
+        : null,
+    [ready, layers, dLi, layer, dParams, dStageKey, customCodes, driveLayer],
   )
+
+  const result = pipelineOut?.result ?? null
+  const pseudoRun: PseudocodeRunResult = useMemo(
+    () =>
+      pipelineOut?.pseudoRun ?? {
+        ok: true,
+        output: null,
+        steps: [],
+        error: null,
+        runtimeMs: 0,
+      },
+    [pipelineOut],
+  )
+  const activeStepObj =
+    selectedStep !== null ? (pseudoRun.steps[selectedStep] ?? null) : null
 
   const extrusionCount = useMemo(
     () => (result ? result.moves.filter((m) => m.kind === 'extrusion').length : 0),
@@ -174,6 +220,14 @@ function App() {
   const isStlSource = source.kind === 'stl' || source.kind === 'file'
   const stlTriangles: Triangle[] =
     source.kind === 'stl' ? stlPresets[source.id] : source.kind === 'file' ? source.triangles : []
+  const shapeName =
+    source.kind === 'preset'
+      ? presetLabels[source.id]
+      : source.kind === 'stl'
+        ? `${source.id === 'cube' ? 'Cube 30 mm' : 'Pyramid 40 mm'} (layer ${li + 1})`
+        : source.kind === 'file'
+          ? `${source.name} (layer ${li + 1})`
+          : 'Custom drawing'
   // Compare, animate and draw are 2D-only views.
   const show3d =
     viewMode === '3d' && isStlSource && mode === 'normal' && !drawMode && layers.length > 1
@@ -226,6 +280,16 @@ function App() {
         />
         {layers.length > 1 && (
           <span className="layer-scrubber">
+            <button
+              type="button"
+              className="btn btn-xs layer-step-btn"
+              disabled={li <= 0}
+              onClick={() => setLayerIndex(Math.max(0, li - 1))}
+              title="Previous layer"
+              aria-label="Previous layer"
+            >
+              ◀
+            </button>
             <input
               type="range"
               min={0}
@@ -233,6 +297,16 @@ function App() {
               value={li}
               onChange={(e) => setLayerIndex(Number(e.target.value))}
             />
+            <button
+              type="button"
+              className="btn btn-xs layer-step-btn"
+              disabled={li >= layers.length - 1}
+              onClick={() => setLayerIndex(Math.min(layers.length - 1, li + 1))}
+              title="Next layer"
+              aria-label="Next layer"
+            >
+              ▶
+            </button>
             <span className="layer-label">
               layer {li + 1} / {layers.length}
             </span>
@@ -311,6 +385,12 @@ function App() {
                 stepCount={mode === 'animate' ? undefined : (step ?? undefined)}
                 animDist={mode === 'animate' ? animDist : null}
                 showNozzle={mode === 'animate'}
+                activeStep={activeStepObj}
+                allSteps={pseudoRun.steps}
+                totalSteps={pseudoRun.steps.length}
+                onSelectStep={setSelectedStep}
+                params={dParams}
+                shapeName={shapeName}
                 draw={{
                   active: drawMode,
                   draft,
@@ -339,6 +419,24 @@ function App() {
             result={result}
             compareHint={source.kind === 'preset' && source.id === 'thin-wedge' && mode !== 'compare'}
             onCompare={() => setMode('compare')}
+            stageKey={stageKey}
+            code={customCodes[stageKey] ?? PSEUDOCODE_STAGES[stageKey].defaultCode}
+            isCustomCode={customCodes[stageKey] !== undefined}
+            driveLayer={driveLayer}
+            pseudoRun={pseudoRun}
+            selectedStep={selectedStep}
+            onChangeCode={(nextCode) =>
+              setCustomCodes((prev) => ({ ...prev, [stageKey]: nextCode }))
+            }
+            onResetCode={() =>
+              setCustomCodes((prev) => {
+                const copy = { ...prev }
+                delete copy[stageKey]
+                return copy
+              })
+            }
+            onToggleDriveLayer={setDriveLayer}
+            onSelectStep={setSelectedStep}
           />
         </aside>
       </div>

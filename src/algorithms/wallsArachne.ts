@@ -73,7 +73,7 @@ export interface ArachneResult extends WallResult {
  * than half a bead): that region is better served by a single centreline bead
  * of adapted width.
  */
-function arachneInsets(
+export function arachneInsets(
   outline: Polygon[],
   wallWidth: number,
   wallCount: number,
@@ -99,7 +99,7 @@ function arachneInsets(
  * cutting leaf chains shorter than minBranchLength. Returns a re-indexed
  * skeleton containing only nodes that still have an edge.
  */
-function pruneSkeleton(skel: Skeleton, minBranchLength: number): Skeleton {
+export function pruneSkeleton(skel: Skeleton, minBranchLength: number): Skeleton {
   let edges = skel.edges
   for (let pass = 0; pass < 20; pass++) {
     const adj: { to: number; e: number }[][] = skel.nodes.map(() => [])
@@ -145,7 +145,7 @@ function pruneSkeleton(skel: Skeleton, minBranchLength: number): Skeleton {
 }
 
 /** Decompose the skeleton graph into polylines of node indices. */
-function skeletonPolylines(skel: Skeleton): number[][] {
+export function skeletonPolylines(skel: Skeleton): number[][] {
   const adj: { to: number; e: number }[][] = skel.nodes.map(() => [])
   skel.edges.forEach(([a, b], e) => {
     adj[a].push({ to: b, e })
@@ -187,7 +187,7 @@ function skeletonPolylines(skel: Skeleton): number[][] {
  * A single centreline bead represents them, so for d < 1.5w the bead takes the
  * full local thickness. Returns null where the feature is below minWidth.
  */
-function beadWidth(d: number, wallWidth: number, minWidth: number): number | null {
+export function beadWidth(d: number, wallWidth: number, minWidth: number): number | null {
   if (d < minWidth) return null
   const n = Math.max(1, Math.round(d / wallWidth))
   const w = d / n
@@ -195,7 +195,7 @@ function beadWidth(d: number, wallWidth: number, minWidth: number): number | nul
 }
 
 /** Moving average of widths over transitionLength of arc, clamped to [min(d, minW), d]. */
-function smoothWidths(
+export function smoothWidths(
   pts: Point[],
   ws: number[],
   ds: number[],

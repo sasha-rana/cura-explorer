@@ -204,13 +204,35 @@ export function PipelinePanel(props: PipelinePanelProps) {
           <span className="field-label">
             Step through ({props.step}/{props.stepMax})
           </span>
-          <input
-            type="range"
-            min={0}
-            max={props.stepMax}
-            value={props.step}
-            onChange={(e) => props.onStep(Number(e.target.value))}
-          />
+          <span className="slider-with-arrows">
+            <button
+              type="button"
+              className="btn btn-xs layer-step-btn"
+              disabled={props.step <= 0}
+              onClick={() => props.onStep(Math.max(0, props.step - 1))}
+              title="Previous extrusion move"
+              aria-label="Previous extrusion move"
+            >
+              ◀
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={props.stepMax}
+              value={props.step}
+              onChange={(e) => props.onStep(Number(e.target.value))}
+            />
+            <button
+              type="button"
+              className="btn btn-xs layer-step-btn"
+              disabled={props.step >= props.stepMax}
+              onClick={() => props.onStep(Math.min(props.stepMax, props.step + 1))}
+              title="Next extrusion move"
+              aria-label="Next extrusion move"
+            >
+              ▶
+            </button>
+          </span>
         </label>
       </Section>
 

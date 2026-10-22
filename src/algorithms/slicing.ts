@@ -75,7 +75,7 @@ function intersectTrianglePlane(tri: Triangle, z: number): Segment | null {
 }
 
 /** Chain segments end-to-end into closed rings, patching small gaps. */
-function stitchSegments(segments: Segment[]): Ring[] {
+export function stitchSegments(segments: Segment[]): Ring[] {
   const byKey = new Map<string, number[]>()
   segments.forEach((s, i) => {
     for (const p of [s.a, s.b]) {
@@ -169,7 +169,7 @@ function cleanRing(chain: Point[], closed: boolean): Ring {
  * if that container is itself a hole, the ring is an island and starts a new
  * polygon.
  */
-function ringsToPolygons(rings: Ring[]): Polygon[] {
+export function ringsToPolygons(rings: Ring[]): Polygon[] {
   const sorted = rings
     .map((ring) => ({ ring, area: Math.abs(signedArea(ring)) }))
     .filter((r) => r.area > 0)

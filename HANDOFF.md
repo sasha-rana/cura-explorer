@@ -16,7 +16,7 @@ variable-width) → infill patterns → path ordering → combing/travel → met
 - Stack: Vite 8 + React 19 + TS strict; Canvas 2D layer view; three.js 3D view;
   `js-angusj-clipper` (WASM Clipper) for boolean/offset; `d3-delaunay` for the
   medial-axis approximation; vitest + oxlint.
-- State: **80/80 tests green, `tsc -b` clean, `oxlint` clean, `npm run build` clean.**
+- State: **84/84 tests green, `tsc -b` clean, `oxlint` clean, `npm run build` clean.**
   Verified repeatedly with headless-Chromium smoke runs (zero console errors).
 
 ## Architecture map
@@ -30,16 +30,18 @@ src/algorithms/  one pure module per stage. Each exports `*Doc: StageDoc`
                  (structured markdown: The idea / Step by step / Key formulas /
                  Edge cases & simplifications / Try it) rendered by src/ui/markdown.tsx.
                  slicing.ts, areas.ts, wallsConstant.ts, wallsArachne.ts, infill.ts,
-                 pathOrder.ts, travel.ts, metrics.ts
+                 pathOrder.ts, travel.ts, metrics.ts, pseudocode.ts (commented,
+                 executable stage pseudocode + step() checkpoint instrumentation)
 src/state/       pipeline.ts (sync single-layer chain: outline → areas → walls →
-                 infill → order → travel → metrics),
+                 infill → order → travel → metrics, plus runPipelineWithPseudocode),
                  pipelineCache.ts (versioned lazy multi-layer cache for the 3D view;
                  computes 2 layers per setTimeout(0) tick; >60 layers + arachne ⇒
                  non-current layers silently fall back to constant walls)
-src/ui/          App-level wiring in src/App.tsx; LayerView.tsx (Canvas 2D + draw mode),
-                 View3D.tsx (three.js), ribbon3d.ts (pure ribbon builder),
-                 CompareView, AnimateControls, PipelinePanel/ParamsPanel,
-                 ExplainerPanel (+ markdown.tsx), MetricsTable, vis.ts (toggles/colors)
+src/ui/          App-level wiring in src/App.tsx; LayerView.tsx (Canvas 2D + draw mode +
+                 step checkpoint overlay & HUD), View3D.tsx (three.js), ribbon3d.ts (pure
+                 ribbon builder), CompareView, AnimateControls, PipelinePanel/ParamsPanel,
+                 ExplainerPanel + PseudocodePanel (+ markdown.tsx), MetricsTable,
+                 vis.ts (toggles/colors)
 src/presets/     shapes.ts — 7 stress presets (thin-wedge is the Arachne showcase)
 ```
 

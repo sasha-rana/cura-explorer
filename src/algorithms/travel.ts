@@ -57,7 +57,7 @@ export interface TravelParams {
 const BOUNDARY_TOLERANCE = 10
 
 /** Sample a segment every ~spacing microns; true when every sample is inside `area`. */
-function segmentInsideArea(a: Point, b: Point, area: Polygon[], spacing: number): boolean {
+export function segmentInsideArea(a: Point, b: Point, area: Polygon[], spacing: number): boolean {
   const len = dist(a, b)
   const n = Math.max(1, Math.ceil(len / spacing))
   for (let i = 0; i <= n; i++) {
@@ -68,7 +68,7 @@ function segmentInsideArea(a: Point, b: Point, area: Polygon[], spacing: number)
   return true
 }
 
-function pathInsideArea(path: Polyline, area: Polygon[], spacing: number): boolean {
+export function pathInsideArea(path: Polyline, area: Polygon[], spacing: number): boolean {
   for (let i = 1; i < path.length; i++) {
     if (!segmentInsideArea(path[i - 1], path[i], area, spacing)) return false
   }
@@ -144,7 +144,7 @@ function dedupe(path: Polyline): Polyline {
  * exits and re-enters it. Returns undefined when no single-ring detour exists
  * (endpoints outside the comb area, or crossings on different rings/parts).
  */
-function combAlongBoundary(
+export function combAlongBoundary(
   from: Point,
   to: Point,
   combArea: Polygon[],
@@ -235,12 +235,12 @@ export function computeTravel(
   return finish([from, to], false)
 }
 
-function lineStart(line: ExtrusionLine | Polyline): Point {
+export function lineStart(line: ExtrusionLine | Polyline): Point {
   const first = line[0]
   return 'p' in first ? first.p : first
 }
 
-function lineEnd(line: ExtrusionLine | Polyline): Point {
+export function lineEnd(line: ExtrusionLine | Polyline): Point {
   const last = line[line.length - 1]
   return 'p' in last ? last.p : last
 }
