@@ -30,12 +30,24 @@
   flex: 0 0 auto;
 }
 
+.brand-group {
+  display: flex;
+  flex-direction: column;
+  margin-right: 6px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
 .brand {
   font-weight: 600;
   font-size: 13px;
   color: var(--text-h);
-  margin-right: 6px;
-  white-space: nowrap;
+}
+
+.brand-byline {
+  font-size: 10px;
+  color: var(--text);
+  opacity: 0.78;
 }
 
 .toolbar-spacer {

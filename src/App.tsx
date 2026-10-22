@@ -248,7 +248,10 @@ function App() {
   return (
     <div className="app">
       <header className="toolbar">
-        <span className="brand">Cura Algorithm Explorer</span>
+        <div className="brand-group">
+          <span className="brand">Cura Algorithm Explorer</span>
+          <span className="brand-byline">by Sasha Rana</span>
+        </div>
         <select
           className="source-select"
           value={sourceValue(source)}
