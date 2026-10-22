@@ -155,7 +155,9 @@ export function LayerView(props: LayerViewProps) {
   useEffect(() => {
     if (size.w === 0 || size.h === 0) return
     if (fitRef.current === props.fitKey && view) return
-    fitRef.current = props.fitKey
+    if (contentBounds) {
+      fitRef.current = props.fitKey
+    }
     const b = contentBounds ?? { minX: -BED, minY: -BED, maxX: BED, maxY: BED }
     const w = Math.max(1000, b.maxX - b.minX)
     const h = Math.max(1000, b.maxY - b.minY)
